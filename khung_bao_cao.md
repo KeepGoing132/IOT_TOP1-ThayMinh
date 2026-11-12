@@ -142,8 +142,8 @@
     - Cảm biến môi trường **DHT11** (chân dữ liệu GPIO 4) đo Nhiệt độ và Độ ẩm.
     - Còi báo động Buzzer điều khiển phát tần số 2000Hz bằng bộ điều chế xung **LEDC PWM** trên GPIO 27.
   - **Khối xử lý biên và Thị giác máy tính (Raspberry Pi 5):**
-    - Bộ vi xử lý Broadcom BCM2712 Quad-Core ARM Cortex-A76 2.4GHz, RAM 8GB.
-    - Camera CSI Picamera2 góc rộng góc quan sát khu vực giám sát.
+    - Bộ vi xử lý Broadcom BCM2712 Quad-Core ARM Cortex-A76 2.4GHz, RAM 4GB.
+    - Module Camera CSI 5MP (1080p) kết nối qua cáp MIPI CSI góc quan sát khu vực giám sát.
 * **2.1.3. Hình ảnh sản phẩm phần cứng thực tế và Sơ đồ đấu dây chi tiết.**
 
 ---
@@ -246,7 +246,7 @@
 ---
 
 ## TÀI LIỆU THAM KHẢO & PHỤ LỤC (3 – 5 trang)
-- **Tài liệu tham khảo:** Giáo trình Giải thuật di truyền, các bài báo IEEE/Scopus về Genetic Algorithm Hyperparameter Tuning, YOLOv8/NCNN, ESP32 và Edge AI.
+- **Tài liệu tham khảo:** Giáo trình Giải thuật di truyền, các bài báo IEEE/Scopus về Genetic Algorithm Hyperparameter Tuning, YOLO/NCNN, ESP32 và Edge AI.
 - **Phụ lục mã nguồn:**
   - Toàn bộ file cấu hình tối ưu siêu tham số `best_hyperparameters.yaml` và log tiến hóa `tune_results.ndjson`.
   - Mã nguồn Firmware C++ ESP32 (`esp32_fire_sentinel.ino`).

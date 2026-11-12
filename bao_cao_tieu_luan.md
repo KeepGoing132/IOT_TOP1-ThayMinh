@@ -103,7 +103,7 @@ Các hệ thống báo cháy thông thường hiện nay chủ yếu sử dụng
 Để giải quyết triệt để vấn đề trên, sự kết hợp giữa **Trí tuệ nhân tạo (AI)** và **Internet vạn vật (IoT)** — hay còn gọi là **AIoT** — nổi lên như một giải pháp mang tính đột phá. Tuy nhiên, việc đưa các mô hình thị giác máy tính học sâu (Deep Learning) lên các thiết bị nhúng biên (Edge Computing) gặp phải thách thức lớn về tài nguyên phần cứng giới hạn và sự cân bằng giữa độ chính xác và độ trễ. Do đó, việc ứng dụng các phương pháp tối ưu hóa hiện đại như **Giải thuật di truyền (Genetic Algorithm - GA)** để tinh chỉnh siêu tham số mô hình trở nên vô cùng cấp thiết.
 
 ### 2. Ý nghĩa khoa học và thực tiễn của đề tài
-* **Về mặt khoa học:** Đề tài nghiên cứu sâu sắc cơ chế tiến hóa sinh học của Giải thuật di truyền, cụ thể hóa thành toán toán học đa mục tiêu nhằm tối ưu hóa các siêu tham số huấn luyện của mô hình thị giác YOLOv8. Việc ứng dụng GA giúp tự động hóa quá trình tìm kiếm không gian nghiệm phức tạp, vượt trội hoàn toàn so với các phương pháp thử - sai (Grid Search/Random Search) truyền thống.
+* **Về mặt khoa học:** Đề tài nghiên cứu sâu sắc cơ chế tiến hóa sinh học của Giải thuật di truyền, cụ thể hóa thành toán toán học đa mục tiêu nhằm tối ưu hóa các siêu tham số huấn luyện của mô hình thị giác YOLO 26n (phiên bản Nano siêu nhẹ tối ưu hóa cho phần cứng nhúng biên). Việc ứng dụng GA giúp tự động hóa quá trình tìm kiếm không gian nghiệm phức tạp, vượt trội hoàn toàn so với các phương pháp thử - sai (Grid Search/Random Search) truyền thống.
 * **Về mặt thực tiễn:** Chế tạo thành công một sản phẩm phần cứng AIoT hoàn chỉnh, kết hợp hài hòa giữa chi phí thấp (ESP32) và năng lực xử lý AI biên mạnh mẽ (Raspberry Pi 5). Hệ thống không chỉ phát còi tại chỗ mà còn cung cấp Web Dashboard quản trị hiện đại và bắn thông báo đẩy tức thời về Smartphone qua dịch vụ đám mây Blynk IoT.
 
 ### 3. Phương pháp nghiên cứu
@@ -229,13 +229,13 @@ Tại mỗi thế hệ, giải thuật chọn lọc các cá thể cha mẹ có 
 
 ## 1.3. CƠ SỞ THỊ GIÁC MÁY TÍNH VÀ TỐI ƯU HÓA BIÊN NCNN
 
-### 1.3.1. Kiến trúc mạng nơ-ron tích chập YOLO
-Mô hình YOLO (You Only Look Once) giải quyết bài toán phát hiện ngọn lửa theo phương thức một giai đoạn (One-stage Detector). Thay vì tạo vùng đề xuất (Region Proposals) như họ mạng Faster R-CNN, YOLO chia bức ảnh đầu vào thành lưới các ô và dự đoán đồng thời tọa độ hộp bao (Bounding Box), độ tin cậy có ngọn lửa (Objectness Score) và xác suất phân lớp đối tượng.
+### 1.3.1. Kiến trúc mạng nơ-ron thị giác máy tính YOLO 26n
+Mô hình YOLO 26n (phiên bản Nano thế hệ mới với kích thước tham số siêu nhỏ gọn, tối ưu đặc biệt cho các bộ xử lý biên) giải quyết bài toán phát hiện đám cháy và ngọn lửa theo phương thức một giai đoạn (One-stage Detector). Thay vì tạo vùng đề xuất (Region Proposals) như họ mạng Faster R-CNN, YOLO chia bức ảnh đầu vào thành lưới các ô và dự đoán đồng thời tọa độ hộp bao (Bounding Box), độ tin cậy và xác suất phân lớp đối tượng.
 
 Kiến trúc bao gồm:
 1. **Backbone (Cốt mạng):** Trích xuất các đặc trưng thị giác đa tầng từ thô đến mịn (màu sắc ngọn lửa, độ tương phản ánh sáng, biên dạng bập bùng).
 2. **Neck (Cổ mạng):** Sử dụng cấu trúc Feature Pyramid Network (FPN) và Path Aggregation Network (PAN) để kết hợp các đặc trưng ngữ nghĩa mức cao với đặc trưng vị trí mức thấp, giúp nhận diện hiệu quả các đốm lửa nhỏ ở khoảng cách xa.
-3. **Detect Head (Đầu dự đoán):** Dự đoán trực tiếp hộp bao và nhãn `fire`.
+3. **Detect Head (Đầu dự đoán):** Dự đoán trực tiếp tọa độ hộp bao (Bounding Box) và xác suất phân loại của 2 nhãn đối tượng mục tiêu: nhãn **`fire`** (đám cháy lớn, vùng cháy diện rộng) và nhãn **`flame`** (ngọn lửa, đốm lửa bập bùng).
 
 ---
 
@@ -273,7 +273,7 @@ Trong tài liệu giảng dạy môn học *IoT và Ứng dụng* (Chương 1, M
 1. **Các Node đầu cuối (End Nodes):** Vi điều khiển **ESP32** đóng vai trò End Node, làm nhiệm vụ **Cảm nhận** ($PM_{2.5}, PM_{10}$, TVOC, $eCO_2$, nhiệt độ, độ ẩm) và **Chấp hành** (điều khiển còi báo động qua PWM LEDC).
 2. **Node điều phối trung tâm (Coordinator Node):** **Raspberry Pi 5** đóng vai trò Coordinator Node kết nối trong mạng vô tuyến LAN nội bộ qua giao thức MQTT. Pi 5 đóng vai trò bộ não điều phối: thu thập dữ liệu từ ESP32, chạy thuật toán AI phân tích, trực tiếp ra quyết định bật/tắt còi và chuyển tiếp sự cố lên Đám mây.
 3. **Thành phần Đám mây (Cloud Component):** **Blynk IoT Cloud** lưu trữ hồ sơ sự cố, quản lý phiên và phân phối thông báo đẩy khẩn cấp qua Internet.
-4. **Các Node quan sát (Observer Nodes):** **Web Dashboard (Tabler UI trên PC/Tablet)** và **Blynk App trên Smartphone** đóng vai trò các điểm quan sát, nhận luồng thông tin cập nhật liên tục và cho phép người dùng điều khiển ngắt còi từ xa.
+4. **Các Node quan sát (Observer Nodes):** **Web Dashboard (Tabler UI trên PC/Tablet)** và **Blynk App trên Smartphone** đóng vai trò các điểm quan sát chuẩn lý thuyết: chỉ làm nhiệm vụ đăng ký nhận dữ liệu (Subscribe) để trực quan hóa biểu đồ (Visualization), theo dõi số liệu và nhận thông báo cảnh báo. Toàn bộ quyền lực quyết định và điều khiển cơ cấu chấp hành (bật/tắt còi) thuộc về Node điều phối trung tâm (Raspberry Pi 5) qua vòng lặp phản hồi tự động khép kín.
 
 **Điểm đột phá sáng tạo của đề tài:**
 Trong mô hình IoT Cấp độ 5 truyền thống, Node điều phối chỉ đơn thuần đóng vai trò Gateway gom dữ liệu gửi lên Đám mây để phân tích. Tuy nhiên, trong đề tài này, Node điều phối Raspberry Pi 5 được nâng cấp thành **Trạm biên Trí tuệ nhân tạo (Edge AI Coordinator)**: chạy trực tiếp hai mô hình AI (XGBoost và YOLO NCNN tối ưu bằng GA) ngay tại chỗ. Nhờ đó, việc ra quyết định xử lý báo động cháy diễn ra tức thời trong nội bộ mạng với độ trễ dưới 20ms, hoàn toàn không bị gián đoạn ngay cả khi đường truyền Internet bị mất.
@@ -283,7 +283,7 @@ Trong mô hình IoT Cấp độ 5 truyền thống, Node điều phối chỉ đ
 ### 1.4.2. Cơ chế Phán quyết 2 Tầng (2-Stage AI Inference Pipeline)
 Để vừa giải quyết triệt để vấn đề báo động giả, vừa tối ưu hóa mức tiêu thụ năng lượng và nhiệt độ của thiết bị nhúng biên, hệ thống áp dụng cơ chế suy luận 2 tầng:
 - **Tầng 1 - Luôn luôn hoạt động (Always-on Sensing):** Sử dụng thuật toán học máy XGBoost phân tích dữ liệu đa cảm biến (PMS5003, SGP30, DHT11) gửi về định kỳ mỗi 3 giây. Thuật toán trích xuất đặc trưng biến thiên chuỗi thời gian (Set E) qua bộ đệm trượt FIFO 4 bước. Tầng này có độ phức tạp tính toán rất thấp ($\approx 15\text{ms}$), giúp sàng lọc $99\%$ thời gian trạng thái an toàn.
-- **Tầng 2 - Đánh thức theo nhu cầu (Wake-up on Demand):** Camera Picamera2 bình thường được đưa vào trạng thái ngủ (Standby) tiết kiệm điện năng. Chỉ khi Tầng 1 XGBoost phát hiện nguy cơ cháy (`FIRE_HAZARD`), Camera mới lập tức được "đánh thức" để chụp ảnh và đưa qua mô hình YOLO NCNN (đã được GA tối ưu) để xác thực ngọn lửa.
+- **Tầng 2 - Đánh thức theo nhu cầu (Wake-up on Demand):** Module Camera CSI 5MP 1080p bình thường được đưa vào trạng thái ngủ (Standby) tiết kiệm điện năng. Chỉ khi Tầng 1 XGBoost phát hiện nguy cơ cháy (`FIRE_HAZARD`), Camera mới lập tức được "đánh thức" để chụp ảnh và đưa qua mô hình YOLO 26n NCNN (đã được GA tối ưu) để xác thực ngọn lửa.
 
 ```mermaid
 sequenceDiagram
@@ -360,7 +360,7 @@ Sản phẩm phần cứng được thiết kế theo cấu trúc module hóa ph
 
 ```mermaid
 graph TD
-    subgraph NODE_DAU_CUOI ["NODE ĐẦU CUỐI: ESP32 NodeMCU"]
+    subgraph NODE_DAU_CUOI ["NODE ĐẦU CUỐI: ESP32 (CH340 Type-C)"]
         PMS[Cảm biến bụi mịn PMS5003 UART] --> ESP[Vi điều khiển ESP32]
         SGP[Cảm biến khí SGP30 I2C] --> ESP
         DHT[Cảm biến DHT11 One-Wire] --> ESP
@@ -368,7 +368,7 @@ graph TD
     end
 
     subgraph NODE_DIEU_PHOI ["NODE ĐIỀU PHỐI BIÊN: Raspberry Pi 5"]
-        CAM[Picamera2 Wide-Angle CSI] --> PI5[Bộ xử lý BCM2712 Pi 5]
+        CAM[Camera CSI 5MP 1080p] --> PI5[Bộ xử lý BCM2712 Pi 5 - 4GB RAM]
         PI5 --> STORE[(Thư mục Evidence Lưu trữ)]
         PI5 --> MQTT_SVR[Mosquitto MQTT Broker]
         PI5 --> FASTAPI[Web Server FastAPI & WebSockets]
@@ -392,25 +392,26 @@ graph TD
 ### 2.1.2. Chi tiết các module thành phần phần cứng
 
 #### a. Module thu thập dữ liệu và Báo động (ESP32)
-* **Vi điều khiển ESP32 NodeMCU-32S:** Trang bị nhân kép Xtensa 32-bit LX6 xung nhịp 240MHz, tích hợp WiFi 802.11 b/g/n và Bluetooth BLE. Chạy firmware C++ non-blocking tối ưu hóa.
+* **Vi điều khiển ESP32 (CH340 Type-C):** Sử dụng bo mạch vi điều khiển ESP32 tích hợp chip nạp tự động USB-to-UART CH340 qua cổng giao tiếp Type-C hiện đại (thuận tiện cấp nguồn và nạp chương trình ổn định); trang bị vi xử lý lõi kép Xtensa 32-bit LX6 xung nhịp 240MHz, tích hợp sẵn Wi-Fi 802.11 b/g/n và Bluetooth BLE. Thiết bị thực thi firmware C++ non-blocking tối ưu hóa luồng chu kỳ thu thập dữ liệu.
 * **Cảm biến bụi laser Plantower PMS5003:** Sử dụng nguyên lý tán xạ ánh sáng laser 650nm chiếu vào các hạt bụi lơ lửng trong luồng khí đối lưu cưỡng bức. Cho phép đo đạc chính xác nồng độ bụi siêu mịn $PM_{1.0}, PM_{2.5}, PM_{10}$ ($\mu g/m^3$) cùng 6 kênh đếm số lượng hạt bụi theo kích cỡ đường kính từ $0.3\mu m$ đến $10\mu m$. Kết nối qua cổng UART (GPIO 16 - RX2, GPIO 17 - TX2) với tốc độ baud 9600 bps.
 * **Cảm biến khí đa kênh Sensirion SGP30:** Tích hợp công nghệ cảm biến khí oxit kim loại đa phần tử trên một vi mạch duy nhất. Đo lường chính xác tổng hợp chất hữu cơ dễ bay hơi TVOC (từ $0$ đến $60.000$ ppb) và nồng độ $CO_2$ tương đương $eCO_2$ (từ $400$ đến $60.000$ ppm). Giao tiếp chuẩn I2C qua chân GPIO 21 (SDA) và GPIO 22 (SCL).
 * **Cảm biến nhiệt độ - độ ẩm DHT11:** Cung cấp thông số nhiệt độ môi trường ($0-50^\circ C$) và độ ẩm ($20-90\% RH$) qua giao tiếp 1 dây số (One-wire) trên GPIO 4.
 * **Còi báo động Buzzer và mạch khuếch đại:** Sử dụng kênh điều chế xung **LEDC (Channel 0)** của ESP32 xuất xung tần số âm thanh chuẩn $2000\text{Hz}$ với độ phân giải 8-bit trên chân GPIO 27, tạo âm báo đanh rõ rệt khi có đám cháy.
 
 #### b. Module Điều phối biên và Thị giác máy tính (Raspberry Pi 5)
-* **Máy tính nhúng Raspberry Pi 5:** Vi xử lý Broadcom BCM2712 (Quad-core ARM Cortex-A76 @ 2.4GHz), bộ nhớ RAM 8GB LPDDR4X. Thiết bị có hiệu năng tính toán cao gấp 3 lần so với thế hệ Raspberry Pi 4, cho phép thực thi song song cả Broker MQTT, Backend Web Dashboard, mô hình XGBoost và mạng nơ-ron YOLO NCNN.
-* **Module Camera Picamera2:** Cảm biến ảnh Sony độ phân giải cao kết nối qua cáp dẹt MIPI CSI 4 làn, tốc độ lấy khung hình lên tới 60 fps, góc nhìn rộng bao quát toàn cảnh căn phòng.
+* **Máy tính nhúng Raspberry Pi 5:** Vi xử lý Broadcom BCM2712 (Quad-core ARM Cortex-A76 @ 2.4GHz), bộ nhớ RAM 4GB LPDDR4X. Thiết bị có hiệu năng tính toán cao gấp 3 lần so với thế hệ Raspberry Pi 4, dung lượng RAM 4GB hoàn toàn đáp ứng tối ưu và mượt mà cho hệ thống đa nhiệm: thực thi song song Broker Mosquitto MQTT, Backend Web Dashboard FastAPI, mô hình phân loại chuỗi thời gian XGBoost và mạng nơ-ron thị giác máy tính YOLO 26n NCNN.
+* **Module Camera CSI 5MP (1080p):** Sử dụng module camera chuyên dụng chuẩn giao tiếp MIPI CSI độ phân giải 5 Megapixels (5MP), hỗ trợ thu nhận hình ảnh tĩnh và video độ nét cao chuẩn Full HD 1080p@30fps. Camera kết nối trực tiếp với Raspberry Pi 5 qua cổng cáp dẹt CSI chuyên dụng, điều khiển thông qua thư viện phần cứng Picamera2 với độ trễ chụp cực thấp ($< 15\text{ms}$), cung cấp góc nhìn rộng và hình ảnh sắc nét giúp mô hình YOLO 26n phát hiện chính xác ngọn lửa.
 
 \newpage
 
-## 2.2. THỰC NGHIỆM TỐI ƯU HÓA MÔ HÌNH YOLO BẰNG GIẢI THUẬT DI TRUYỀN (GA)
+## 2.2. THỰC NGHIỆM TỐI ƯU HÓA MÔ HÌNH YOLO 26n BẰNG GIẢI THUẬT DI TRUYỀN (GA)
 
 Toàn bộ dữ liệu thực nghiệm trong mục này được trích xuất trực tiếp từ các file nhật ký huấn luyện tại đường dẫn thư mục:  
 `C:\Users\OS\Desktop\train_model\YOLO_train_detection_GUI\runs\detect\fire_flame_tune`
 
 ### 2.2.1. Thiết lập Bài toán Thực nghiệm Tiến hóa
-* **Tập dữ liệu huấn luyện:** Tập ảnh đám cháy và ngọn lửa đa dạng kích cỡ, phản quang và góc chiếu sáng khác nhau (Fire & Flame Detection Dataset).
+* **Kiến trúc mô hình thực nghiệm:** **YOLO 26n** – phiên bản nano siêu gọn nhẹ, tối ưu hóa để triển khai trên vi xử lý nhúng ARM Raspberry Pi 5.
+* **Tập dữ liệu huấn luyện:** Tập dữ liệu ảnh gồm 2 lớp đối tượng nhận diện chính là **`fire`** (đám cháy) và **`flame`** (ngọn lửa) với đa dạng kích cỡ, bối cảnh phản quang và góc chiếu sáng khác nhau (Fire & Flame Detection Dataset).
 * **Không gian gen siêu tham số cần tối ưu hóa ($\Theta$):**
   1. `lr0` (Initial Learning Rate): Tốc độ học khởi tạo của bộ tối ưu hóa SGD/Adam, tìm kiếm trong khoảng $[0.001, 0.01]$.
   2. `cls` (Class Loss Gain): Hệ số phạt hàm mất mát phân loại đối tượng ngọn lửa, tìm kiếm trong khoảng $[0.4, 0.7]$.
@@ -503,7 +504,7 @@ Mã nguồn triển khai tại trạm điều phối trung tâm Raspberry Pi 5 k
 - Nhờ các đặc trưng vi phân này, XGBoost phát hiện sự vọt đỉnh đột ngột của khói chỉ sau **$15\text{ms} – 20\text{ms}$** với độ tin cậy thường trên $95\%$.
 
 #### b. Tầng 2: Xác thực ngọn lửa qua YOLO NCNN (Tối ưu bởi GA)
-- Khi XGBoost chẩn đoán nhãn `FIRE_HAZARD`, camera Picamera2 lập tức chụp khung hình.
+- Khi XGBoost chẩn đoán nhãn `FIRE_HAZARD`, module camera CSI 5MP 1080p lập tức chụp khung hình.
 - Khung hình được chuyển đổi sang mảng pixel và đưa thẳng vào mô hình YOLO NCNN.
 - **Thời gian suy luận ngọn lửa trên Pi 5:** Chỉ mất **$\approx 15\text{ms} – 20\text{ms}/frame$**.
 
@@ -572,7 +573,7 @@ Trạm điều phối Pi 5 vận hành một Web Server FastAPI (tại cổng 50
 * **Diễn biến hệ thống:**
   - Cảm biến ghi nhận nồng độ hạt bụi mịn $NC_{0.3}$ tăng vọt lên $>14.000$, TVOC tăng lên $>700\text{ppb}$.
   - Mô hình Tầng 1 XGBoost phát hiện độ biến thiên bất thường $\rightarrow$ kích hoạt nhãn `FIRE_HAZARD`.
-  - Hệ thống lập tức đánh thức Camera Picamera2 $\rightarrow$ Mô hình YOLO NCNN quét khung hình trong $18\text{ms}$.
+  - Hệ thống lập tức đánh thức Camera CSI 5MP 1080p $\rightarrow$ Mô hình YOLO 26n NCNN quét khung hình trong $18\text{ms}$.
   - Kết quả YOLO: **0 phát hiện ngọn lửa** ($0\text{ flame target}$).
   - Hệ thống đưa ra phán quyết: **`HỦY BÁO ĐỘNG GIẢ (FALSE ALARM SUPPRESSED)`**.
   - **Kết quả:** Còi ESP32 hoàn toàn không hú, điện thoại không bị làm phiền, bộ nhớ thẻ nhớ SD không lưu bất kỳ file ảnh rác nào.
@@ -585,7 +586,7 @@ Trạm điều phối Pi 5 vận hành một Web Server FastAPI (tại cổng 50
 * **Diễn biến hệ thống:**
   - Cảm biến PMS5003 đo được nồng độ khói $PM_{2.5}$ vọt lên $620\mu g/m^3$, nhiệt độ tăng.
   - Tầng 1 XGBoost chẩn đoán nguy cơ cháy với độ tin cậy $99.9\%$.
-  - Tầng 2 Camera Picamera2 được đánh thức $\rightarrow$ YOLO NCNN bắt được ngọn lửa bập bùng với độ tin cậy **$98.7\%$**.
+  - Tầng 2 Camera CSI 5MP 1080p được đánh thức $\rightarrow$ YOLO 26n NCNN bắt được ngọn lửa bập bùng với độ tin cậy **$98.7\%$**.
   - Hệ thống đưa ra phán quyết: **`BÁO ĐỘNG ĐỎ (FIRE CONFIRMED)`**.
   - **Kết quả:**
     1. Lệnh MQTT gửi tới ESP32 $\rightarrow$ Còi buzzer LEDC hú vang tức thì.
@@ -601,10 +602,10 @@ Trạm điều phối Pi 5 vận hành một Web Server FastAPI (tại cổng 50
 
 | Khối chức năng | Phần cứng đảm nhiệm | Độ trễ thực nghiệm (Latency) | Đánh giá |
 | :--- | :--- | :---: | :--- |
-| **Đọc chu kỳ cảm biến** | ESP32 NodeMCU | $3.0\text{ giây/chu kỳ}$ | Định kỳ thu thập số liệu |
+| **Đọc chu kỳ cảm biến** | ESP32 (CH340 Type-C) | $3.0\text{ giây/chu kỳ}$ | Định kỳ thu thập số liệu |
 | **Truyền gói tin MQTT LAN** | WiFi 2.4GHz nội bộ | $8\text{ms} – 18\text{ms}$ | Cực kỳ nhanh và ổn định |
 | **Suy luận Tầng 1 (XGBoost)**| Raspberry Pi 5 (CPU ARM) | $15\text{ms} – 22\text{ms}$ | Phân tích 16 đặc trưng Set E |
-| **Chụp ảnh camera Picamera2**| Sony Sensor qua MIPI CSI | $12\text{ms} – 16\text{ms}$ | Lấy khung hình vào RAM |
+| **Chụp ảnh camera CSI 5MP**| Module CSI 5MP (1080p) qua MIPI CSI | $12\text{ms} – 16\text{ms}$ | Lấy khung hình vào RAM |
 | **Suy luận Tầng 2 (YOLO NCNN)**| Raspberry Pi 5 (ARM Neon) | **$16\text{ms} – 20\text{ms}$** | Tối ưu hóa bởi GA |
 | **Gửi phản hồi bật còi buzzer**| MQTT $\rightarrow$ ESP32 LEDC | $10\text{ms} – 15\text{ms}$ | Còi kêu ngay lập tức |
 | **Bắn thông báo đẩy Blynk** | Pi 5 $\rightarrow$ Blynk Cloud $\rightarrow$ Phone | $300\text{ms} – 650\text{ms}$ | Phụ thuộc mạng 4G/Internet |
@@ -616,14 +617,14 @@ Trạm điều phối Pi 5 vận hành một Web Server FastAPI (tại cổng 50
 
 ### 1. Kết luận đạt được
 Sau thời gian nghiên cứu, thiết kế và thử nghiệm thực tế, đề tài đã hoàn thành xuất sắc toàn bộ các mục tiêu đặt ra:
-1. **Ứng dụng thành công Giải thuật di truyền (GA) vào bài toán học sâu:** Đã thiết lập bài toán tiến hóa siêu tham số có hướng cho mô hình thị giác YOLOv8 nhận diện ngọn lửa. Sau 10 thế hệ tiến hóa, giải thuật đã tìm ra bộ nhiễm sắc thể tối ưu ($lr_0 = 0.00963, cls = 0.64678, degrees = 0.8974$), giúp nâng cao độ chính xác Precision đạt **$82.24\%$** và $mAP_{50}$ đạt **$81.05\%$**.
+1. **Ứng dụng thành công Giải thuật di truyền (GA) vào bài toán học sâu:** Đã thiết lập bài toán tiến hóa siêu tham số có hướng cho mô hình thị giác YOLO 26n nhận diện 2 lớp đối tượng đám cháy và ngọn lửa (`fire` và `flame`). Sau 10 thế hệ tiến hóa, giải thuật đã tìm ra bộ nhiễm sắc thể tối ưu ($lr_0 = 0.00963, cls = 0.64678, degrees = 0.8974$), giúp nâng cao độ chính xác Precision đạt **$82.24\%$** và $mAP_{50}$ đạt **$81.05\%$**.
 2. **Chế tạo hoàn chỉnh sản phẩm phần cứng AIoT:** Xây dựng phần cứng đạt chuẩn **IoT Cấp độ 5 (IoT Level-5)** với sự phân cấp mạch lạc: Node đầu cuối ESP32 làm nhiệm vụ cảm nhận - chấp hành, Node điều phối Raspberry Pi 5 làm trạm biên AI xử lý trung tâm.
 3. **Giải quyết triệt để vấn đề báo động giả:** Cơ chế phán quyết 2 tầng (XGBoost + YOLO NCNN) đã loại bỏ hoàn toàn các trường hợp báo động sai từ bình xịt aerosol, khói thuốc lá hay ánh đèn xe.
 4. **Tối ưu hóa tài nguyên phần cứng biên:** Cơ chế đánh thức camera theo nhu cầu (Wake-up on demand) và giải phóng bộ nhớ RAM khi không có cháy giúp thẻ nhớ SD của Raspberry Pi 5 không bị hao mòn, giữ độ trễ hệ thống luôn dưới $80\text{ms}$.
 5. **Hệ sinh thái giám sát đa kênh:** Kết hợp nhịp nhàng giữa Web Dashboard Tabler UI trực quan tại chỗ và ứng dụng di động Blynk IoT Cloud cảnh báo từ xa qua mạng di động.
 
 ### 2. Hạn chế của đề tài
-- Camera Picamera2 hiện tại có góc quan sát cố định, chưa có cơ cấu chấp hành xoay tự động bám theo hướng nguồn khói.
+- Module Camera CSI 5MP 1080p hiện tại có góc quan sát cố định, chưa có cơ cấu chấp hành xoay tự động bám theo hướng nguồn khói.
 - Mô hình YOLO quang học phụ thuộc vào ánh sáng môi trường; trong điều kiện phòng tối hoàn toàn hoặc bị khói đặc che khuất tầm nhìn, khả năng nhận diện ngọn lửa quang học có thể bị suy giảm.
 
 ### 3. Hướng phát triển trong tương lai
@@ -639,7 +640,7 @@ Sau thời gian nghiên cứu, thiết kế và thử nghiệm thực tế, đ�
 2. **Arshdeep Bahga, Vijay Madisetti (2014),** *Internet of Things: A Hands-On Approach*, Universities Press, ISBN: 978-0996025515.
 3. **John H. Holland (1992),** *Adaptation in Natural and Artificial Systems: An Introductory Analysis with Applications to Biology, Control, and Artificial Intelligence*, MIT Press.
 4. **David E. Goldberg (1989),** *Genetic Algorithms in Search, Optimization, and Machine Learning*, Addison-Wesley Professional.
-5. **Glenn Jocher et al. (2023),** *Ultralytics YOLOv8: Hyperparameter Evolution with Genetic Algorithms*, GitHub Repository: `https://github.com/ultralytics/ultralytics`.
+5. **Glenn Jocher et al. (2023),** *Ultralytics YOLO: Hyperparameter Evolution with Genetic Algorithms*, GitHub Repository: `https://github.com/ultralytics/ultralytics`.
 6. **Tianxu Nihui (2020),** *NCNN: High-performance neural network inference framework optimized for mobile and embedded platforms*, Tencent, GitHub Repository: `https://github.com/Tencent/ncnn`.
 7. **Tianqi Chen, Carlos Guestrin (2016),** *XGBoost: A Scalable Tree Boosting System*, Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, pp. 785–794.
 8. **Sensirion AG (2020),** *SGP30 Gas Sensor Datasheet: Multi-pixel Gas Sensor for Indoor Air Quality Applications*.
