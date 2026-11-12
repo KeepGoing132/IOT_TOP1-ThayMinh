@@ -1,0 +1,185 @@
+#include <Wire.h>
+#include <Adafruit_SGP30.h>
+#include <DHT.h>
+#include <WiFi.h>
+#include <PubSubClient.h>
+
+// ==================== CONFIG ====================
+#define I2C_SDA 21
+#define I2C_SCL 22
+#define DHT_PIN 4
+#define DHT_TYPE DHT11
+#define PMS_RX 16
+#define PMS_TX 17
+#define BUZZER_PIN 27
+
+const char* ssid = "ruby-chan";
+const char* password = "stayu0603";
+const char* mqtt_server = "10.156.225.221";
+const int mqtt_port = 1883;
+const char* MQTT_TOPIC_REQUEST = "iot/test/request";
+const char* MQTT_TOPIC_RESPONSE = "iot/test/response";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+Adafruit_SGP30 sgp;
+DHT dht(DHT_PIN, DHT_TYPE);
+HardwareSerial pmsSerial(2);
+
+// ==================== VARIABLES ====================
+bool isBuzzerActive = false;
+unsigned long lastBuzzerToggle = 0;
+bool buzzerBeepState = false;
+
+uint8_t pmsFrame[32];
+int pmsIndex = 0;
+uint16_t latestPM1 = 0, latestPM25 = 0, latestPM10 = 0;
+uint16_t latestNC03 = 0, latestNC05 = 0, latestNC10 = 0, latestNC25 = 0, latestNC50 = 0, latestNC100 = 0;
+bool pmsDataAvailable = false;
+uint16_t latestECO2 = 0, latestTVOC = 0;
+
+unsigned long lastOutputTime = 0, lastSGPTime = 0, lastMqttAttempt = 0;
+const unsigned long OUTPUT_INTERVAL = 3000;
+const unsigned long SGP_INTERVAL = 1000;
+const unsigned long MQTT_RETRY_INTERVAL = 5000;
+
+// ==================== PMS FUNCTIONS ====================
+uint16_t readPMS16(int pos) {
+  return ((uint16_t)pmsFrame[pos] << 8) | pmsFrame[pos + 1];
+}
+
+void readPMS() {
+  while (pmsSerial.available()) {
+    uint8_t data = pmsSerial.read();
+    if (pmsIndex == 0 && data != 0x42) continue;
+    if (pmsIndex == 1 && data != 0x4D) { pmsIndex = 0; continue; }
+    pmsFrame[pmsIndex++] = data;
+
+    if (pmsIndex == 32) {
+      uint16_t frameLen = readPMS16(2);
+      uint16_t checksum = 0;
+      for (int i = 0; i < 30; i++) checksum += pmsFrame[i];
+      uint16_t receivedChecksum = readPMS16(30);
+
+      if (frameLen == 28 && checksum == receivedChecksum) {
+        latestPM1 = readPMS16(10); latestPM25 = readPMS16(12); latestPM10 = readPMS16(14);
+        latestNC03 = readPMS16(16); latestNC05 = readPMS16(18); latestNC10 = readPMS16(20);
+        latestNC25 = readPMS16(22); latestNC50 = readPMS16(24); latestNC100 = readPMS16(26);
+        pmsDataAvailable = true;
+      }
+      pmsIndex = 0;
+    }
+  }
+}
+
+// ==================== WIFI & MQTT CALLBACK ====================
+void setup_wifi() {
+  Serial.print("Connecting WiFi");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
+  Serial.println("\nWiFi connected! IP: " + WiFi.localIP().toString());
+}
+
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  String msg = "";
+  for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
+  Serial.println("[MQTT In] " + String(topic) + " -> " + msg);
+
+  if (strcmp(topic, MQTT_TOPIC_RESPONSE) == 0) {
+    if (msg.indexOf("\"buzzer\": 1") >= 0 || msg.indexOf("\"buzzer\":1") >= 0 || msg.indexOf("BUZZER_ON") >= 0 || msg.indexOf("FIRE_CONFIRMED") >= 0) {
+      isBuzzerActive = true;
+      Serial.println("🚨 [BÁO ĐỘNG ĐỎ] BẬT CÒI GPIO27!");
+    } else if (msg.indexOf("\"buzzer\": 0") >= 0 || msg.indexOf("\"buzzer\":0") >= 0 || msg.indexOf("BUZZER_OFF") >= 0 || msg.indexOf("NORMAL") >= 0 || msg.indexOf("FALSE_ALARM_SUPPRESSED") >= 0) {
+      isBuzzerActive = false;
+      ledcWriteTone(BUZZER_PIN, 0);
+      Serial.println("🟢 [AN TOÀN / RESET] ĐÃ TẮT CÒI.");
+    }
+  }
+}
+
+void reconnect_mqtt() {
+  unsigned long now = millis();
+  if (now - lastMqttAttempt < MQTT_RETRY_INTERVAL) return;
+  lastMqttAttempt = now;
+
+  Serial.print("Connecting MQTT...");
+  String clientId = "ESP32_Sensor_" + String((uint32_t)ESP.getEfuseMac(), HEX);
+  if (client.connect(clientId.c_str())) {
+    Serial.println("connected!");
+    client.subscribe(MQTT_TOPIC_RESPONSE);
+  } else {
+    Serial.printf("failed, rc=%d. Retry in 5s\n", client.state());
+  }
+}
+
+// ==================== PUBLISH DATA & BUZZER ====================
+void publishSensorData(unsigned long elapsed, float temp, float hum) {
+  char tempStr[16], humStr[16], payload[380];
+  if (isnan(temp)) strcpy(tempStr, "null"); else snprintf(tempStr, sizeof(tempStr), "%.1f", temp);
+  if (isnan(hum)) strcpy(humStr, "null"); else snprintf(humStr, sizeof(humStr), "%.1f", hum);
+
+  snprintf(payload, sizeof(payload),
+    "{\"elapsed_ms\":%lu,\"temperature\":%s,\"humidity\":%s,\"eCO2\":%u,\"TVOC\":%u,"
+    "\"PM1_0\":%u,\"PM2_5\":%u,\"PM10\":%u,\"NC0_3\":%u,\"NC0_5\":%u,\"NC1_0\":%u,\"NC2_5\":%u,\"NC5_0\":%u,\"NC10\":%u}",
+    elapsed, tempStr, humStr, latestECO2, latestTVOC,
+    latestPM1, latestPM25, latestPM10, latestNC03, latestNC05, latestNC10, latestNC25, latestNC50, latestNC100);
+
+  if (client.publish(MQTT_TOPIC_REQUEST, payload)) {
+    Serial.println("MQTT pub: " + String(payload));
+  } else {
+    Serial.println("MQTT pub failed!");
+  }
+}
+
+void updateBuzzer() {
+  if (!isBuzzerActive) { ledcWriteTone(BUZZER_PIN, 0); return; }
+  unsigned long now = millis();
+  if (now - lastBuzzerToggle >= 250) {
+    lastBuzzerToggle = now;
+    buzzerBeepState = !buzzerBeepState;
+    ledcWriteTone(BUZZER_PIN, buzzerBeepState ? 2000 : 0);
+  }
+}
+
+// ==================== MAIN ====================
+void setup() {
+  Serial.begin(115200);
+  ledcAttach(BUZZER_PIN, 2000, 8);
+  ledcWriteTone(BUZZER_PIN, 0);
+
+  Wire.begin(I2C_SDA, I2C_SCL);
+  dht.begin();
+  pmsSerial.begin(9600, SERIAL_8N1, PMS_RX, PMS_TX);
+
+  if (!sgp.begin()) {
+    Serial.println("ERROR: SGP30 not found");
+    while (1) delay(100);
+  }
+
+  setup_wifi();
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(mqttCallback);
+  client.setBufferSize(512);
+  Serial.println("Hệ thống Sensor + Buzzer + MQTT đã sẵn sàng!");
+}
+
+void loop() {
+  unsigned long now = millis();
+  updateBuzzer();
+  readPMS();
+
+  if (now - lastSGPTime >= SGP_INTERVAL) {
+    lastSGPTime = now;
+    if (sgp.IAQmeasure()) { latestECO2 = sgp.eCO2; latestTVOC = sgp.TVOC; }
+  }
+
+  if (now - lastOutputTime >= OUTPUT_INTERVAL) {
+    lastOutputTime = now;
+    float temp = dht.readTemperature();
+    float hum = dht.readHumidity();
+    if (client.connected()) publishSensorData(now, temp, hum);
+  }
+
+  if (!client.connected()) reconnect_mqtt();
+  client.loop();
+}

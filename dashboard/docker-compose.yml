@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  fire-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fire-sentinel-dashboard:latest
+    container_name: fire_dashboard
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      # Khi chạy trên Pi 5, Broker chạy ở localhost hoặc tên container mosquitto
+      # Nếu chạy Dashboard từ PC, đổi thành IP của Pi 5: 10.156.225.221
+      - MQTT_BROKER=10.156.225.221
+      - MQTT_PORT=1883
+      - REQ_TOPIC=iot/test/request
+      - RES_TOPIC=iot/test/response
+      - DASHBOARD_PORT=5000
+    volumes:
+      # Mount thư mục ảnh để dashboard có thể đọc trực tiếp ảnh chụp từ YOLO
+      - ./evidence:/app/evidence
+      # Nếu triển khai trên Pi 5 chung thư mục với inference:
+      # - /home/khoapi5/yolo/pi5_deploy:/app/evidence

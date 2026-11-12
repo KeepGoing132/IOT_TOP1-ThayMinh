@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="vi" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <meta http-equiv="X-UA-Compatible" content="ie=edge"/>
+  <title>AIoT Fire Sentinel - Trung Tâm Giám Sát Cảnh Báo Cháy 2 Tầng</title>
+  
+  <!-- Tabler CSS Core -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css">
+  <!-- Tabler Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+  <!-- Favicon biểu tượng ngọn lửa -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔥</text></svg>">
+
+  <style>
+    @keyframes pulse-alarm {
+      0% { box-shadow: 0 0 0 0 rgba(214, 57, 57, 0.7); }
+      70% { box-shadow: 0 0 0 15px rgba(214, 57, 57, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(214, 57, 57, 0); }
+    }
+    .fire-alarm-active {
+      border: 2px solid #d63939 !important;
+      animation: pulse-alarm 1.5s infinite;
+      background: rgba(214, 57, 57, 0.12) !important;
+    }
+    .status-badge-pulse {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .pulse-green {
+      background-color: #2fb344;
+      box-shadow: 0 0 8px #2fb344;
+    }
+    .pulse-red {
+      background-color: #d63939;
+      box-shadow: 0 0 12px #d63939;
+      animation: pulse-alarm 1s infinite;
+    }
+    .pulse-yellow {
+      background-color: #f59f00;
+      box-shadow: 0 0 8px #f59f00;
+    }
+    .evidence-img-container {
+      position: relative;
+      background: #111827;
+      min-height: 280px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .evidence-img-container img {
+      width: 100%;
+      height: 100%;
+      max-height: 380px;
+      object-fit: cover;
+      transition: transform 0.2s;
+    }
+    .evidence-img-container img:hover {
+      transform: scale(1.02);
+      cursor: pointer;
+    }
+    .gallery-thumb {
+      height: 110px;
+      object-fit: cover;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .gallery-thumb:hover {
+      opacity: 0.85;
+    }
+  </style>
+</head>
+<body class="layout-boxed">
+  <div class="page">
+    <!-- Navbar Header -->
+    <header class="navbar navbar-expand-md d-print-none sticky-top">
+      <div class="container-xl">
+        <a href="." class="navbar-brand navbar-brand-autodark d-none-navbar-horizontal pe-0 pe-md-3">
+          <span class="avatar avatar-sm bg-danger-lt text-danger me-2">
+            <i class="ti ti-flame fs-2"></i>
+          </span>
+          <div>
+            <span class="h3 m-0 font-weight-bold">AIoT FIRE SENTINEL</span>
+            <small class="d-block text-secondary fs-6">Hệ thống Giám sát Cháy 2 Tầng: XGBoost (Set E) + Picamera2 YOLO NCNN</small>
+          </div>
+        </a>
+        <div class="navbar-nav flex-row order-md-last align-items-center">
+          <div class="nav-item me-3">
+            <span class="badge bg-dark-lt text-secondary p-2" id="broker-indicator">
+              <i class="ti ti-access-point me-1"></i> Broker: {{ broker }}
+            </span>
+          </div>
+          <div class="nav-item me-3">
+            <span class="badge bg-green-lt p-2" id="ws-indicator">
+              <span class="status-badge-pulse pulse-green"></span> WebSocket Live
+            </span>
+          </div>
+          <!-- Dark/Light Mode Switcher -->
+          <div class="nav-item">
+            <a href="javascript:void(0)" class="nav-link px-0" onclick="toggleTheme()" title="Đổi giao diện">
+              <i class="ti ti-sun fs-2" id="theme-icon"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-wrapper">
+      <div class="page-body">
+        <div class="container-xl">
+          
+          <!-- BANNER CẢNH BÁO BÁO ĐỘNG KHẨN CẤP (ẨN KHI AN TOÀN) -->
+          <div class="alert alert-important alert-danger alert-dismissible d-none" id="emergency-banner" role="alert">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <div class="d-flex align-items-center">
+                <i class="ti ti-alert-triangle fs-1 me-3"></i>
+                <div>
+                  <h3 class="alert-title m-0">🚨 BÁO ĐỘNG ĐỎ: PHÁT HIỆN ĐÁM CHÁY XÁC THỰC BỞI YOLO NCNN!</h3>
+                  <div class="text-secondary-light" id="emergency-detail">
+                    Tín hiệu bật còi báo động đã được gửi tới ESP32 (Topic: iot/test/response). Vui lòng kiểm tra hiện trường ngay!
+                  </div>
+                </div>
+              </div>
+              <div>
+                <button type="button" class="btn btn-light text-danger font-weight-bold shadow-sm" onclick="resetAlarm()">
+                  <i class="ti ti-bell-off me-1"></i> Tắt Còi / Đã Kiểm Tra Hiện Trường
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- HÀNG 1: 4 THẺ METRICS CẢM BIẾN & TRẠNG THÁI -->
+          <div class="row row-deck row-cards mb-3">
+            
+            <!-- Card 1: Trạng thái Hệ Thống & Còi ESP32 -->
+            <div class="col-sm-6 col-lg-3">
+              <div class="card card-sm border-0" id="card-status-container">
+                <div class="card-body">
+                  <div class="row align-items-center">
+                    <div class="col-auto">
+                      <span class="avatar bg-green-lt text-green avatar-md" id="avatar-status">
+                        <i class="ti ti-shield-check fs-1" id="icon-status"></i>
+                      </span>
+                    </div>
+                    <div class="col">
+                      <div class="font-weight-medium text-secondary">TRẠNG THÁI HỆ THỐNG</div>
+                      <div class="h2 m-0 text-success" id="txt-system-status">AN TOÀN</div>
+                      <div class="text-secondary small mt-1" id="txt-buzzer-status">Còi ESP32: <span class="badge bg-secondary-lt">TẮT</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 2: Bụi Mịn PMS5003 -->
+            <div class="col-sm-6 col-lg-3">
+              <div class="card card-sm">
+                <div class="card-body">
+                  <div class="row align-items-center">
+                    <div class="col-auto">
+                      <span class="avatar bg-cyan-lt text-cyan avatar-md">
+                        <i class="ti ti-wind fs-1"></i>
+                      </span>
+                    </div>
+                    <div class="col">
+                      <div class="font-weight-medium text-secondary">BỤI MỊN [PMS5003]</div>
+                      <div class="h2 m-0"><span id="val-pm25">--</span> <small class="text-secondary fs-6">µg/m³ (PM2.5)</small></div>
+                      <div class="text-secondary small mt-1">
+                        PM1.0: <b id="val-pm10">--</b> | NC0.3: <b id="val-nc03">--</b>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 3: Khí Gas Độc Hại SGP30 -->
+            <div class="col-sm-6 col-lg-3">
+              <div class="card card-sm">
+                <div class="card-body">
+                  <div class="row align-items-center">
+                    <div class="col-auto">
+                      <span class="avatar bg-purple-lt text-purple avatar-md">
+                        <i class="ti ti-flask fs-1"></i>
+                      </span>
+                    </div>
+                    <div class="col">
+                      <div class="font-weight-medium text-secondary">KHÍ GAS ĐỘC [SGP30]</div>
+                      <div class="h2 m-0"><span id="val-tvoc">--</span> <small class="text-secondary fs-6">ppb (TVOC)</small></div>
+                      <div class="text-secondary small mt-1">
+                        eCO2: <b id="val-eco2">--</b> ppm
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 4: Nhiệt Độ & Độ Ẩm DHT11 -->
+            <div class="col-sm-6 col-lg-3">
+              <div class="card card-sm">
+                <div class="card-body">
+                  <div class="row align-items-center">
+                    <div class="col-auto">
+                      <span class="avatar bg-yellow-lt text-yellow avatar-md">
+                        <i class="ti ti-temperature fs-1"></i>
+                      </span>
+                    </div>
+                    <div class="col">
+                      <div class="font-weight-medium text-secondary">MÔI TRƯỜNG [DHT11]</div>
+                      <div class="h2 m-0"><span id="val-temp">--</span> <small class="text-secondary fs-6">°C</small></div>
+                      <div class="text-secondary small mt-1">
+                        Độ ẩm: <b id="val-hum">--</b> %
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- HÀNG 2: ẢNH BẰNG CHỨNG CAMERA (TẦNG 2) VÀ BIỂU ĐỒ REALTIME -->
+          <div class="row row-deck row-cards mb-3">
+            
+            <!-- CỘT TRÁI: KHUNG XEM ẢNH CAMERA PICAMERA2 & YOLO NCNN -->
+            <div class="col-lg-5">
+              <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                  <div>
+                    <h3 class="card-title">
+                      <i class="ti ti-camera me-2 text-danger"></i> Ảnh Bằng Chứng Tầng 2 (YOLO NCNN)
+                    </h3>
+                    <p class="card-subtitle m-0">Khung hình chụp xác nhận ngọn lửa bập bùng</p>
+                  </div>
+                  <span class="badge bg-secondary-lt" id="badge-cam-status">Chế độ ngủ (Standby)</span>
+                </div>
+                <div class="card-body p-2">
+                  <div class="evidence-img-container" id="evidence-container">
+                    <div class="text-center p-4" id="placeholder-cam">
+                      <i class="ti ti-video-off fs-1 text-secondary opacity-50 mb-2"></i>
+                      <div class="text-secondary font-weight-medium">Camera đang ở chế độ ngủ tiết kiệm điện</div>
+                      <small class="text-muted d-block mt-1">Chỉ kích hoạt khi XGBoost phát hiện nguy cơ khói/nhiệt tăng vọt</small>
+                    </div>
+                    <img id="img-evidence-latest" src="" class="d-none" alt="Ảnh bằng chứng có lửa" onclick="openImageModal(this.src)">
+                  </div>
+                </div>
+                <div class="card-footer py-2 d-flex justify-content-between align-items-center small text-secondary">
+                  <span id="txt-evidence-meta"><i class="ti ti-clock me-1"></i> Chưa có sự kiện cháy nào</span>
+                  <a href="javascript:void(0)" onclick="loadEvidenceGallery()" class="text-secondary">
+                    <i class="ti ti-refresh me-1"></i> Làm mới
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <!-- CỘT PHẢI: BIỂU ĐỒ XU HƯỚNG CẢM BIẾN REAL-TIME (APEXCHARTS) -->
+            <div class="col-lg-7">
+              <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                  <div>
+                    <h3 class="card-title">
+                      <i class="ti ti-chart-line me-2 text-primary"></i> Biến Thiên Dữ Liệu Cảm Biến Thời Gian Thực
+                    </h3>
+                    <p class="card-subtitle m-0">Luồng dữ liệu telemetry cập nhật qua MQTT mỗi 2-3s</p>
+                  </div>
+                  <div class="badge bg-primary-lt">Live Stream</div>
+                </div>
+                <div class="card-body">
+                  <div id="chart-telemetry" style="min-height: 320px;"></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- HÀNG 3: THƯ VIỆN LỊCH SỬ CÁC LẦN PHÁT HIỆN CHÁY & NHẬT KÝ SỰ KIỆN -->
+          <div class="row row-deck row-cards">
+            
+            <!-- Thư viện ảnh lịch sử -->
+            <div class="col-lg-7">
+              <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                  <h3 class="card-title">
+                    <i class="ti ti-photo me-2 text-warning"></i> Thư Viện Ảnh Bằng Chứng (Evidence Gallery)
+                  </h3>
+                  <span class="badge bg-yellow-lt" id="gallery-count">0 ảnh đã lưu</span>
+                </div>
+                <div class="card-body">
+                  <div class="row g-2" id="gallery-grid">
+                    <div class="col-12 text-center text-secondary py-4" id="gallery-empty">
+                      <i class="ti ti-folder-off fs-2 mb-2 d-block"></i>
+                      Chưa có ảnh bằng chứng nào được ghi nhận
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Nhật ký sự kiện AIoT -->
+            <div class="col-lg-5">
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="card-title">
+                    <i class="ti ti-list-check me-2 text-info"></i> Nhật Ký Đánh Giá 2 Tầng (Audit Log)
+                  </h3>
+                </div>
+                <div class="table-responsive" style="max-height: 280px;">
+                  <table class="table table-vcenter card-table table-striped table-sm">
+                    <thead>
+                      <tr>
+                        <th>Thời Gian</th>
+                        <th>XGBoost</th>
+                        <th>YOLO Cam</th>
+                        <th>Còi ESP32</th>
+                      </tr>
+                    </thead>
+                    <tbody id="log-tbody">
+                      <tr>
+                        <td colspan="4" class="text-center text-secondary py-3">
+                          <i class="ti ti-loader me-1"></i> Đang chờ bản tin đánh giá thời gian thực từ Raspberry Pi 5 (iot/test/response)...
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <footer class="footer footer-transparent d-print-none py-3">
+        <div class="container-xl text-center text-secondary small">
+          AIoT Smart Fire Detection System &bull; Raspberry Pi 5 &amp; ESP32 &bull; Tabler Dashboard &bull; 2026
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Modal phóng to ảnh -->
+  <div class="modal modal-blur fade" id="modal-image-viewer" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+      <div class="modal-content bg-dark">
+        <div class="modal-header py-2">
+          <h5 class="modal-title text-light" id="modal-image-title">Chi Tiết Bằng Chứng Phát Hiện Ngọn Lửa</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body text-center p-2">
+          <img id="modal-img-element" src="" class="img-fluid rounded" alt="Full size evidence">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabler Core JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/js/tabler.min.js"></script>
+  <!-- ApexCharts JS -->
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+  <script>
+    // =========================================================================
+    // 1. CẤU HÌNH APEXCHARTS BIẾN THIÊN CẢM BIẾN
+    // =========================================================================
+    let telemetryChart = null;
+    const maxDataPoints = 30;
+    let chartTimestamps = [];
+    let seriesPM25 = [];
+    let seriesTVOC = [];
+    let seriesTemp = [];
+
+    function initChart() {
+      const options = {
+        chart: {
+          type: 'line',
+          height: 320,
+          animations: { enabled: true, easing: 'linear', dynamicAnimation: { speed: 800 } },
+          toolbar: { show: false },
+          background: 'transparent'
+        },
+        theme: { mode: 'dark' },
+        stroke: { curve: 'smooth', width: [3, 2, 2] },
+        colors: ['#00d4ff', '#ae3ec9', '#f59f00'],
+        series: [
+          { name: 'PM2.5 (µg/m³)', data: [] },
+          { name: 'TVOC (ppb)', data: [] },
+          { name: 'Nhiệt Độ (°C)', data: [] }
+        ],
+        xaxis: {
+          categories: [],
+          labels: { style: { colors: '#888', fontSize: '11px' } }
+        },
+        yaxis: [
+          { title: { text: 'PM2.5 (µg/m³)', style: { color: '#00d4ff' } }, min: 0 },
+          { opposite: true, title: { text: 'TVOC (ppb)', style: { color: '#ae3ec9' } }, min: 0 },
+          { show: false, min: 10, max: 60 }
+        ],
+        grid: { borderColor: '#334155', strokeDashArray: 3 },
+        tooltip: { shared: true }
+      };
+
+      telemetryChart = new ApexCharts(document.querySelector("#chart-telemetry"), options);
+      telemetryChart.render();
+    }
+
+    function updateChart(timeStr, pm25, tvoc, temp) {
+      chartTimestamps.push(timeStr);
+      seriesPM25.push(pm25);
+      seriesTVOC.push(tvoc);
+      seriesTemp.push(temp);
+
+      if (chartTimestamps.length > maxDataPoints) {
+        chartTimestamps.shift();
+        seriesPM25.shift();
+        seriesTVOC.shift();
+        seriesTemp.shift();
+      }
+
+      telemetryChart.updateSeries([
+        { name: 'PM2.5 (µg/m³)', data: seriesPM25 },
+        { name: 'TVOC (ppb)', data: seriesTVOC },
+        { name: 'Nhiệt Độ (°C)', data: seriesTemp }
+      ]);
+      telemetryChart.updateOptions({
+        xaxis: { categories: chartTimestamps }
+      });
+    }
+
+    // =========================================================================
+    // 2. KẾT NỐI WEBSOCKET THỜI GIAN THỰC
+    // =========================================================================
+    let ws = null;
+
+    function connectWebSocket() {
+      const loc = window.location;
+      const wsProto = loc.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${wsProto}//${loc.host}/ws`;
+
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        document.getElementById('ws-indicator').className = "badge bg-green-lt p-2";
+        document.getElementById('ws-indicator').innerHTML = '<span class="status-badge-pulse pulse-green"></span> WebSocket Live';
+      };
+
+      ws.onclose = () => {
+        document.getElementById('ws-indicator').className = "badge bg-red-lt p-2";
+        document.getElementById('ws-indicator').innerHTML = '<span class="status-badge-pulse pulse-red"></span> Mất Kết Nối';
+        setTimeout(connectWebSocket, 3000);
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === "init") {
+          // Nạp dữ liệu lịch sử ban đầu
+          if (msg.history && msg.history.length > 0) {
+            msg.history.forEach(pt => {
+              chartTimestamps.push(pt.time || "");
+              seriesPM25.push(pt.PM2_5 || 0);
+              seriesTVOC.push(pt.TVOC || 0);
+              seriesTemp.push(pt.Temperature || 0);
+            });
+            telemetryChart.updateSeries([
+              { name: 'PM2.5 (µg/m³)', data: seriesPM25 },
+              { name: 'TVOC (ppb)', data: seriesTVOC },
+              { name: 'Nhiệt Độ (°C)', data: seriesTemp }
+            ]);
+            telemetryChart.updateOptions({ xaxis: { categories: chartTimestamps } });
+            // Cập nhật số liệu mới nhất
+            const last = msg.history[msg.history.length - 1];
+            renderTelemetry(last);
+          }
+          if (msg.alarm) {
+            handleAlarmUpdate(msg.alarm, false); // false = Không thêm vào bảng log khi mới tải trang
+          }
+        } else if (msg.type === "telemetry") {
+          const pt = msg.data;
+          renderTelemetry(pt);
+          updateChart(pt.time, pt.PM2_5, pt.TVOC, pt.Temperature);
+        } else if (msg.type === "alarm") {
+          handleAlarmUpdate(msg.data, true); // true = Chỉ ghi log khi có bản tin MQTT thật từ Pi 5
+        }
+      };
+
+      // Heartbeat ping
+      setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send("ping");
+        }
+      }, 15000);
+    }
+
+    // Hiển thị số liệu lên Metric Cards
+    function renderTelemetry(d) {
+      if (!d) return;
+      if (d.PM2_5 !== undefined) document.getElementById('val-pm25').innerText = Math.round(d.PM2_5);
+      if (d.PM1_0 !== undefined) document.getElementById('val-pm10').innerText = Math.round(d.PM1_0);
+      if (d.NC0_3 !== undefined) document.getElementById('val-nc03').innerText = Math.round(d.NC0_3);
+      if (d.TVOC !== undefined) document.getElementById('val-tvoc').innerText = Math.round(d.TVOC);
+      if (d.eCO2 !== undefined) document.getElementById('val-eco2').innerText = Math.round(d.eCO2);
+      if (d.Temperature !== undefined) document.getElementById('val-temp').innerText = d.Temperature.toFixed(1);
+      if (d.Humidity !== undefined) document.getElementById('val-hum').innerText = d.Humidity.toFixed(1);
+    }
+
+    // Xử lý sự kiện AI Cảnh Báo Cháy
+    function handleAlarmUpdate(alarm, shouldLog = true) {
+      const cardContainer = document.getElementById('card-status-container');
+      const txtStatus = document.getElementById('txt-system-status');
+      const txtBuzzer = document.getElementById('txt-buzzer-status');
+      const avatarStatus = document.getElementById('avatar-status');
+      const iconStatus = document.getElementById('icon-status');
+      const emergencyBanner = document.getElementById('emergency-banner');
+      const badgeCam = document.getElementById('badge-cam-status');
+
+      const isFireConfirmed = (alarm.status === "FIRE_CONFIRMED" || alarm.buzzer === 1);
+      const isFalseAlarm = (alarm.status === "FALSE_ALARM_SUPPRESSED");
+      const isResidualSmoke = (alarm.status === "RESIDUAL_SMOKE");
+
+      // Chỉ thêm vào bảng Audit Log khi có bản tin thực tế từ MQTT gửi về
+      if (shouldLog && alarm.last_updated) {
+        addLogEntry(alarm);
+      }
+
+      if (isFireConfirmed) {
+        // Trạng thái BÁO ĐỘNG ĐỎ
+        cardContainer.className = "card card-sm fire-alarm-active";
+        txtStatus.innerText = "CHÁY ĐÃ XÁC THỰC!";
+        txtStatus.className = "h2 m-0 text-danger font-weight-bold";
+        txtBuzzer.innerHTML = 'Còi ESP32: <span class="badge bg-danger text-light font-weight-bold">ĐANG HÚ</span>';
+        avatarStatus.className = "avatar bg-danger text-light avatar-md";
+        iconStatus.className = "ti ti-flame fs-1";
+
+        badgeCam.className = "badge bg-danger-lt";
+        badgeCam.innerText = "YOLO: ĐÃ PHÁT HIỆN LỬA!";
+        emergencyBanner.classList.remove('d-none');
+
+        // Hiển thị ảnh bằng chứng mới nhất nếu có
+        if (alarm.evidence_image) {
+          showLatestEvidence(alarm.evidence_image, alarm.timestamp);
+        }
+        loadEvidenceGallery();
+
+      } else if (isFalseAlarm) {
+        // Hủy cảnh báo giả
+        cardContainer.className = "card card-sm border-warning";
+        txtStatus.innerText = "HỦY BÁO ĐỘNG GIẢ";
+        txtStatus.className = "h2 m-0 text-warning font-weight-bold";
+        txtBuzzer.innerHTML = 'Còi ESP32: <span class="badge bg-secondary-lt">TẮT</span> (Loại trừ bình xịt)';
+        avatarStatus.className = "avatar bg-warning-lt text-warning avatar-md";
+        iconStatus.className = "ti ti-shield-half fs-1";
+
+        badgeCam.className = "badge bg-warning-lt text-warning font-weight-bold";
+        badgeCam.innerText = "YOLO: Không thấy lửa (Đã quét 5 frames)";
+        emergencyBanner.classList.add('d-none');
+
+        // Hiển thị frame camera vừa quét kể cả khi không có lửa
+        if (alarm.evidence_image) {
+          showLatestEvidence(alarm.evidence_image, alarm.timestamp);
+        }
+        loadEvidenceGallery();
+
+      } else if (isResidualSmoke) {
+        // Khói dư tàn tích
+        cardContainer.className = "card card-sm border-info";
+        txtStatus.innerText = "KHÓI DƯ TÀN TÍCH";
+        txtStatus.className = "h2 m-0 text-info";
+        txtBuzzer.innerHTML = 'Còi ESP32: <span class="badge bg-secondary-lt">TẮT</span>';
+        avatarStatus.className = "avatar bg-info-lt text-info avatar-md";
+        iconStatus.className = "ti ti-cloud fs-1";
+        emergencyBanner.classList.add('d-none');
+
+      } else {
+        // Bình thường
+        cardContainer.className = "card card-sm border-0";
+        txtStatus.innerText = "AN TOÀN";
+        txtStatus.className = "h2 m-0 text-success font-weight-bold";
+        txtBuzzer.innerHTML = 'Còi ESP32: <span class="badge bg-secondary-lt">TẮT</span>';
+        avatarStatus.className = "avatar bg-green-lt text-green avatar-md";
+        iconStatus.className = "ti ti-shield-check fs-1";
+
+        badgeCam.className = "badge bg-secondary-lt";
+        badgeCam.innerText = "Chế độ ngủ (Standby)";
+        emergencyBanner.classList.add('d-none');
+      }
+    }
+
+    function showLatestEvidence(filename, timestamp) {
+      const placeholder = document.getElementById('placeholder-cam');
+      const img = document.getElementById('img-evidence-latest');
+      const meta = document.getElementById('txt-evidence-meta');
+
+      placeholder.classList.add('d-none');
+      img.classList.remove('d-none');
+      img.src = `/evidence/${filename}?t=${new Date().getTime()}`;
+      meta.innerHTML = `<i class="ti ti-check me-1 text-danger"></i> <b>${filename}</b> (${timestamp || "Vừa chụp"})`;
+    }
+
+    function addLogEntry(alarm) {
+      const tbody = document.getElementById('log-tbody');
+      // Xóa thông báo chờ ban đầu
+      if (tbody.children.length === 1 && tbody.children[0].children.length === 1) {
+        tbody.innerHTML = '';
+      }
+
+      const timeStr = alarm.last_updated || new Date().toLocaleTimeString();
+      let xgbBadge = '<span class="badge bg-green-lt">Normal</span>';
+      if (alarm.xgb_prediction === 'fire' || alarm.status === 'FIRE_CONFIRMED' || alarm.status === 'FALSE_ALARM_SUPPRESSED') {
+        xgbBadge = '<span class="badge bg-red-lt">Fire Hazard</span>';
+      } else if (alarm.xgb_prediction === 'residual_smoke') {
+        xgbBadge = '<span class="badge bg-yellow-lt">Smoke</span>';
+      }
+
+      let yoloBadge = '<span class="badge bg-secondary-lt">Standby</span>';
+      if (alarm.visual_verified) {
+        yoloBadge = '<span class="badge bg-danger text-light font-weight-bold">FLAME CONFIRMED</span>';
+      } else if (alarm.status === 'FALSE_ALARM_SUPPRESSED') {
+        yoloBadge = '<span class="badge bg-warning-lt">Rejected</span>';
+      }
+
+      let buzzerBadge = alarm.buzzer === 1 
+        ? '<span class="badge bg-danger text-light">ON 🚨</span>' 
+        : '<span class="badge bg-secondary-lt">OFF</span>';
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td><small class="text-secondary">${timeStr}</small></td>
+        <td>${xgbBadge}</td>
+        <td>${yoloBadge}</td>
+        <td>${buzzerBadge}</td>
+      `;
+
+      tbody.insertBefore(row, tbody.firstChild);
+      // Giữ tối đa 15 dòng log
+      if (tbody.children.length > 15) {
+        tbody.removeChild(tbody.lastChild);
+      }
+    }
+
+    // =========================================================================
+    // 3. THƯ VIỆN ẢNH BẰNG CHỨNG (EVIDENCE GALLERY)
+    // =========================================================================
+    async function loadEvidenceGallery() {
+      try {
+        const res = await fetch('/api/evidence');
+        const data = await res.json();
+        const grid = document.getElementById('gallery-grid');
+        const countBadge = document.getElementById('gallery-count');
+
+        countBadge.innerText = `${data.count} ảnh đã lưu`;
+
+        if (data.count === 0) {
+          grid.innerHTML = `
+            <div class="col-12 text-center text-secondary py-4">
+              <i class="ti ti-folder-off fs-2 mb-2 d-block"></i>
+              Chưa có ảnh bằng chứng nào được ghi nhận
+            </div>`;
+          return;
+        }
+
+        // Tự động gán ảnh mới nhất vào khung xem chính nếu đang trống
+        const latestImg = document.getElementById('img-evidence-latest');
+        if (latestImg.classList.contains('d-none') && data.images.length > 0) {
+          showLatestEvidence(data.images[0].filename, data.images[0].timestamp);
+        }
+
+        grid.innerHTML = '';
+        data.images.slice(0, 12).forEach(img => {
+          const col = document.createElement('div');
+          col.className = 'col-6 col-sm-4 col-md-4 col-xl-3';
+          const flameBadge = img.is_flame 
+            ? '<span class="position-absolute top-0 start-0 m-1 badge bg-danger text-light font-weight-bold shadow-sm" style="font-size: 11px;">🔥 Có lửa</span>'
+            : '<span class="position-absolute top-0 start-0 m-1 badge bg-dark bg-opacity-75 text-light shadow-sm" style="font-size: 11px;">🛡️ An toàn</span>';
+          const timeBadge = `<span class="position-absolute bottom-0 end-0 m-1 badge bg-dark bg-opacity-75 text-light" style="font-size: 10px;">${img.timestamp.split(' ')[1]}</span>`;
+
+          col.innerHTML = `
+            <div class="card card-sm border-0 shadow-sm h-100 overflow-hidden">
+              <div class="position-relative">
+                <img src="${img.url}" class="card-img-top gallery-thumb w-100" alt="${img.filename}" onclick="openImageModal('${img.url}')">
+                ${flameBadge}
+                ${timeBadge}
+              </div>
+              <div class="card-body p-2 text-center">
+                <small class="d-block text-truncate text-secondary" style="font-size: 11px;" title="${img.filename}">${img.filename}</small>
+              </div>
+            </div>
+          `;
+          grid.appendChild(col);
+        });
+      } catch (err) {
+        console.error("Lỗi nạp thư viện ảnh:", err);
+      }
+    }
+
+    function openImageModal(imgUrl) {
+      document.getElementById('modal-img-element').src = imgUrl;
+      const modal = new bootstrap.Modal(document.getElementById('modal-image-viewer'));
+      modal.show();
+    }
+
+    function toggleTheme() {
+      const htmlEl = document.documentElement;
+      const current = htmlEl.getAttribute('data-bs-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      htmlEl.setAttribute('data-bs-theme', next);
+      const icon = document.getElementById('theme-icon');
+      icon.className = next === 'dark' ? 'ti ti-sun fs-2' : 'ti ti-moon fs-2';
+    }
+
+    // =========================================================================
+    // NÚT BẤM RESET / TẮT CÒI
+    // =========================================================================
+    async function resetAlarm() {
+      try {
+        const res = await fetch('/api/reset_alarm', { method: 'POST' });
+        const data = await res.json();
+        console.log("Reset kết quả:", data);
+      } catch (err) {
+        console.error("Lỗi khi reset báo động:", err);
+      }
+    }
+
+    // =========================================================================
+    // KHỞI ĐỘNG KHI TẢI TRANG
+    // =========================================================================
+    document.addEventListener("DOMContentLoaded", () => {
+      initChart();
+      connectWebSocket();
+      loadEvidenceGallery();
+      // Tự động làm mới thư viện ảnh định kỳ 5 giây/lần
+      setInterval(loadEvidenceGallery, 5000);
+    });
+  </script>
+</body>
+</html>
