@@ -35,6 +35,12 @@ try:
 except ImportError:
     pass
 
+# Thử import module thông báo Blynk IoT
+try:
+    from blynk_notifier import BlynkNotifier
+except ImportError:
+    BlynkNotifier = None
+
 # Mã màu ANSI
 GREEN = "\033[92m"
 YELLOW = "\033[93m"
@@ -133,14 +139,14 @@ class YOLOCameraVerifier:
             print(f"{RED}[LỖI KHỞI ĐỘNG CAMERA/YOLO]{RESET} {e}")
             self.enabled = False
 
-    def verify_fire_temporal(self, num_frames=5, delay_between_frames=1.0, required_positives=3, evidence_dir="evidence"):
+    def verify_fire_temporal(self, num_frames=1, delay_between_frames=1.0, required_positives=1, evidence_dir="evidence"):
         """
-        Quét đa khung hình giãn cách theo từng giây (mặc định 5 frame, 1s/frame):
-        - LƯU TOÀN BỘ 5 KHUNG HÌNH VÀO THƯ MỤC evidence/ (KỂ CẢ CÓ CHÁY HAY KHÔNG)
-        - Nếu phát hiện ngọn lửa: vẽ bounding box đỏ của YOLO
+        Xác thực ngọn lửa qua Camera YOLO NCNN (mặc định 1 frame phản hồi tức thì):
+        - Xử lý khung hình trực tiếp trên bộ nhớ đệm RAM (~15ms)
+        - CHỈ LƯU VÀO THƯ MỤC evidence/ KHI XÁC THỰC CÓ CHÁY (Tiết kiệm bộ nhớ)
+        - Nếu là báo động giả (không cháy): Không lưu bất kỳ ảnh nào vào thẻ nhớ
         - Trả về: (is_confirmed, positive_count, frames_scanned, main_image, scanned_files, avg_lat_ms)
         """
-        os.makedirs(evidence_dir, exist_ok=True)
         if not self.enabled:
             return False, 0, 0, None, [], 0.0
 
@@ -148,7 +154,7 @@ class YOLOCameraVerifier:
         best_results = None
         latencies = []
         frames_scanned = 0
-        scanned_files = []
+        captured_data = []
         now_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         for i in range(num_frames):
@@ -172,12 +178,11 @@ class YOLOCameraVerifier:
                 tag_label = "safe"
                 print(f"    {GREEN}🛡️ [Frame {i+1}/{num_frames}]{RESET} Không phát hiện lửa")
 
-            # Lưu từng frame vào thư mục evidence/
-            frame_filename = f"scan_{now_tag}_f{i+1}_{tag_label}.jpg"
-            frame_filepath = os.path.join(evidence_dir, frame_filename)
-            bgr_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(frame_filepath, bgr_frame)
-            scanned_files.append(frame_filename)
+            captured_data.append({
+                "frame": frame,
+                "has_flame": has_flame,
+                "idx": i + 1
+            })
 
             # Nghỉ giữa các frame (trừ frame cuối)
             if i < num_frames - 1:
@@ -186,16 +191,27 @@ class YOLOCameraVerifier:
         avg_lat_ms = float(np.mean(latencies)) if latencies else 0.0
         is_confirmed = bool(positive_frames >= required_positives)
 
-        # Chọn ảnh đại diện chính để hiển thị to trên Dashboard:
-        # Nếu có frame phát hiện lửa -> chọn frame có lửa
-        # Nếu không có frame nào có lửa -> chọn frame cuối cùng vừa chụp
         main_image = None
-        for fn in scanned_files:
-            if "flame" in fn:
-                main_image = fn
-                break
-        if not main_image and len(scanned_files) > 0:
-            main_image = scanned_files[-1]
+        scanned_files = []
+
+        # CHỈ LƯU ẢNH KHI XÁC NHẬN CÓ CHÁY THỰC SỰ
+        if is_confirmed:
+            os.makedirs(evidence_dir, exist_ok=True)
+            for item in captured_data:
+                # Chỉ lưu những frame bắt được ngọn lửa có bounding box
+                if item["has_flame"]:
+                    frame_filename = f"scan_{now_tag}_f{item['idx']}_flame.jpg"
+                    frame_filepath = os.path.join(evidence_dir, frame_filename)
+                    bgr_frame = cv2.cvtColor(item["frame"], cv2.COLOR_RGB2BGR)
+                    cv2.imwrite(frame_filepath, bgr_frame)
+                    scanned_files.append(frame_filename)
+
+            if scanned_files:
+                main_image = scanned_files[0]
+        else:
+            # Hủy báo động giả -> Không lưu ảnh vào ổ đĩa, giải phóng RAM
+            main_image = None
+            scanned_files = []
 
         return is_confirmed, positive_frames, frames_scanned, main_image, scanned_files, avg_lat_ms
 
@@ -306,9 +322,9 @@ def main():
     parser.add_argument("--req-topic", type=str, default="iot/test/request", help="Topic nhận từ ESP32")
     parser.add_argument("--res-topic", type=str, default="iot/test/response", help="Topic gửi kết quả điều khiển còi")
     parser.add_argument("--yolo-model", type=str, default="ncnn_fire_flame", help="Tên model YOLO NCNN")
-    parser.add_argument("--frames", type=int, default=5, help="Số khung hình camera quét (mặc định: 5)")
+    parser.add_argument("--frames", type=int, default=1, help="Số khung hình camera quét (mặc định: 1)")
     parser.add_argument("--interval", type=float, default=1.0, help="Khoảng giãn cách giữa các frame (giây, mặc định: 1.0s)")
-    parser.add_argument("--req-positives", type=int, default=3, help="Số frame phát hiện lửa tối thiểu để xác nhận (mặc định: 3)")
+    parser.add_argument("--req-positives", type=int, default=1, help="Số frame phát hiện lửa tối thiểu để xác nhận (mặc định: 1)")
     parser.add_argument("--no-cam", action="store_true", help="Tắt camera nếu chưa cắm")
 
     args = parser.parse_args()
@@ -322,6 +338,13 @@ def main():
         model_name=args.yolo_model,
         enable_cam=not args.no_cam
     )
+
+    # Khởi tạo Blynk Notifier
+    blynk = BlynkNotifier() if BlynkNotifier else None
+    if blynk and blynk.is_configured():
+        print(f"{GREEN}{BOLD}[BLYNK READY]{RESET} Đã kết nối Blynk IoT (Server: {blynk.server}) | Pin: {blynk.pin_status.upper()}")
+    else:
+        print(f"{YELLOW}[BLYNK SKIP]{RESET} Chưa cấu hình BLYNK_AUTH_TOKEN trong file .env (Bỏ qua đồng bộ Blynk)")
 
     client = mqtt.Client()
 
@@ -367,12 +390,12 @@ def main():
                     final_alert = True
                     visual_verified = True
                     print(f"  {RED}{BOLD}🚨🚨 [BÁO ĐỘNG ĐỎ CẤP CAO NHẤT] XÁC THỰC {pos_count}/{scanned} FRAMES CÓ LỬA CHÁY LIÊN TỤC! (YOLO: {yolo_lat:.1f}ms/frame){RESET}")
+                    print(f"  📸 Đã lưu {len(scanned_frames)} ảnh bằng chứng ngọn lửa vào thư mục: evidence/")
                 else:
                     final_alert = False
                     visual_verified = False
                     print(f"  {YELLOW}{BOLD}🛡️ [HỦY BÁO ĐỘNG GIẢ] Chỉ có {pos_count}/{scanned} frame nghi vấn (Loại trừ: Ánh đèn xe / Bình xịt aerosol)! KHÔNG BẬT CÒI.{RESET}")
-
-                print(f"  📸 Đã lưu toàn bộ {scanned} frames vào thư mục: evidence/")
+                    print(f"  💾 {CYAN}[TIẾT KIỆM BỘ NHỚ]{RESET} Không có cháy thực tế -> Bỏ qua, không lưu ảnh vào thẻ nhớ.")
             else:
                 # Nếu không bật camera (chạy sensor fallback)
                 final_alert = True
@@ -410,6 +433,17 @@ def main():
 
         json_payload = json.dumps(response_payload)
         c.publish(args.res_topic, json_payload)
+
+        # Đồng bộ trạng thái và bắn thông báo khẩn lên Blynk IoT
+        if blynk and blynk.is_configured():
+            try:
+                blynk.send_fire_alert(
+                    status=system_status,
+                    is_fire=final_alert,
+                    pm25=raw_dict.get("PM2_5_ug_m3")
+                )
+            except Exception as blynk_err:
+                print(f"  ⚠️ [Blynk Error] {blynk_err}")
 
         if final_alert:
             print(f"  {RED}{BOLD}🔔 [MQTT -> {args.res_topic}] ĐÃ GỬI LỆNH BẬT CÒI TỚI ESP32! [buzzer=1, cmd=BUZZER_ON]{RESET}")
