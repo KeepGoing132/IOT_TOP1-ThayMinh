@@ -55,9 +55,8 @@
         "eco2_mean_10s"
     ],
     "classes": [
-        "fire",
         "normal",
-        "residual_smoke"
+        "fire"
     ],
     "sampling_interval_sec": 3.0,
     "window_10s_samples": 4

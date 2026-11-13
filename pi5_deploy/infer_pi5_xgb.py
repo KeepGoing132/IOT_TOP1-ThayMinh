@@ -18,6 +18,7 @@ import os
 import sys
 import time
 import json
+import base64
 import argparse
 from datetime import datetime
 import numpy as np
@@ -139,16 +140,17 @@ class YOLOCameraVerifier:
             print(f"{RED}[LỖI KHỞI ĐỘNG CAMERA/YOLO]{RESET} {e}")
             self.enabled = False
 
-    def verify_fire_temporal(self, num_frames=1, delay_between_frames=1.0, required_positives=1, evidence_dir="evidence"):
+    def verify_fire_temporal(self, num_frames=1, delay_between_frames=1.0, required_positives=1, evidence_dir="evidence", show_window=False):
         """
-        Xác thực ngọn lửa qua Camera YOLO NCNN (mặc định 1 frame phản hồi tức thì):
+        Xác thực ngọn lửa qua Camera YOLO NCNN:
         - Xử lý khung hình trực tiếp trên bộ nhớ đệm RAM (~15ms)
-        - CHỈ LƯU VÀO THƯ MỤC evidence/ KHI XÁC THỰC CÓ CHÁY (Tiết kiệm bộ nhớ)
-        - Nếu là báo động giả (không cháy): Không lưu bất kỳ ảnh nào vào thẻ nhớ
-        - Trả về: (is_confirmed, positive_count, frames_scanned, main_image, scanned_files, avg_lat_ms)
+        - Luôn tạo ảnh xác thực để gửi lên Dashboard (kể cả có lửa hay không)
+        - Có cháy thật: Lưu vào evidence/scan_{tag}_flame.jpg
+        - Không có cháy (Báo động giả): Ghi đè file latest_scan.jpg để không đầy thẻ nhớ SD
+        - Trả về: (is_confirmed, positive_count, frames_scanned, main_image, scanned_files, avg_lat_ms, img_b64)
         """
         if not self.enabled:
-            return False, 0, 0, None, [], 0.0
+            return False, 0, 0, None, [], 0.0, None
 
         positive_frames = 0
         best_results = None
@@ -193,27 +195,47 @@ class YOLOCameraVerifier:
 
         main_image = None
         scanned_files = []
+        img_b64 = None
 
-        # CHỈ LƯU ẢNH KHI XÁC NHẬN CÓ CHÁY THỰC SỰ
-        if is_confirmed:
+        if captured_data:
+            last_item = captured_data[-1]
+            raw_frame = last_item["frame"]
+            bgr_frame = cv2.cvtColor(raw_frame, cv2.COLOR_RGB2BGR)
             os.makedirs(evidence_dir, exist_ok=True)
-            for item in captured_data:
-                # Chỉ lưu những frame bắt được ngọn lửa có bounding box
-                if item["has_flame"]:
-                    frame_filename = f"scan_{now_tag}_f{item['idx']}_flame.jpg"
-                    frame_filepath = os.path.join(evidence_dir, frame_filename)
-                    bgr_frame = cv2.cvtColor(item["frame"], cv2.COLOR_RGB2BGR)
-                    cv2.imwrite(frame_filepath, bgr_frame)
-                    scanned_files.append(frame_filename)
 
-            if scanned_files:
-                main_image = scanned_files[0]
-        else:
-            # Hủy báo động giả -> Không lưu ảnh vào ổ đĩa, giải phóng RAM
-            main_image = None
-            scanned_files = []
+            if is_confirmed:
+                # 1. CÓ CHÁY THẬT: Lưu các frame có lửa
+                for item in captured_data:
+                    if item["has_flame"]:
+                        frame_filename = f"scan_{now_tag}_f{item['idx']}_flame.jpg"
+                        frame_filepath = os.path.join(evidence_dir, frame_filename)
+                        fbgr = cv2.cvtColor(item["frame"], cv2.COLOR_RGB2BGR)
+                        cv2.imwrite(frame_filepath, fbgr)
+                        scanned_files.append(frame_filename)
+                if scanned_files:
+                    main_image = scanned_files[0]
+            else:
+                # 2. HỦY BÁO ĐỘNG GIẢ: Vẽ nhãn "SAFE" và lưu đè file latest_scan.jpg (không tốn thêm dung lượng)
+                main_image = "latest_scan.jpg"
+                h, w = bgr_frame.shape[:2]
+                cv2.rectangle(bgr_frame, (0, 0), (w, 36), (30, 160, 30), -1)
+                cv2.putText(bgr_frame, f"YOLO 26n: SAFE (NO FLAME DETECTED) - {now_tag}", (10, 25),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
+                cv2.imwrite(os.path.join(evidence_dir, main_image), bgr_frame)
 
-        return is_confirmed, positive_frames, frames_scanned, main_image, scanned_files, avg_lat_ms
+            # Mã hóa JPEG Base64
+            _, buffer = cv2.imencode('.jpg', bgr_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            img_b64 = base64.b64encode(buffer).decode('utf-8')
+
+            # Cửa sổ hiển thị trực tiếp (Local GUI Window) nếu được yêu cầu
+            if show_window:
+                try:
+                    cv2.imshow("AIoT Camera Verification", bgr_frame)
+                    cv2.waitKey(1)
+                except Exception:
+                    pass
+
+        return is_confirmed, positive_frames, frames_scanned, main_image, scanned_files, avg_lat_ms, img_b64
 
 class Pi5FireInferenceEngine:
     def __init__(self, model_file="fire_xgb_model.json", config_file="fire_pipeline_config.json"):
@@ -325,6 +347,7 @@ def main():
     parser.add_argument("--frames", type=int, default=1, help="Số khung hình camera quét (mặc định: 1)")
     parser.add_argument("--interval", type=float, default=1.0, help="Khoảng giãn cách giữa các frame (giây, mặc định: 1.0s)")
     parser.add_argument("--req-positives", type=int, default=1, help="Số frame phát hiện lửa tối thiểu để xác nhận (mặc định: 1)")
+    parser.add_argument("--show-cam", action="store_true", default=False, help="Mở cửa sổ camera trực tiếp qua OpenCV GUI")
     parser.add_argument("--no-cam", action="store_true", help="Tắt camera nếu chưa cắm")
 
     args = parser.parse_args()
@@ -376,14 +399,16 @@ def main():
         scanned_frames = []
 
         # --- BƯỚC 2: KÍCH HOẠT TẦNG 2 NẾU XGBOOST BÁO [FIRE] ---
+        img_b64 = None
         if pred_class == "fire":
             if yolo_verifier.enabled:
                 print(f"  {RED}{BOLD}⚡ [ĐÁNH THỨC CAMERA]{RESET} XGBoost phát hiện nguy cơ! Đang xác thực {args.frames} frames ({args.interval}s/frame, cần {args.req_positives} frames có lửa)...")
-                is_confirmed, pos_count, scanned, saved_img, scanned_frames, yolo_lat = yolo_verifier.verify_fire_temporal(
+                is_confirmed, pos_count, scanned, saved_img, scanned_frames, yolo_lat, img_b64 = yolo_verifier.verify_fire_temporal(
                     num_frames=args.frames,
                     delay_between_frames=args.interval,
                     required_positives=args.req_positives,
-                    evidence_dir="evidence"
+                    evidence_dir="evidence",
+                    show_window=args.show_cam
                 )
 
                 if is_confirmed:
@@ -395,7 +420,7 @@ def main():
                     final_alert = False
                     visual_verified = False
                     print(f"  {YELLOW}{BOLD}🛡️ [HỦY BÁO ĐỘNG GIẢ] Chỉ có {pos_count}/{scanned} frame nghi vấn (Loại trừ: Ánh đèn xe / Bình xịt aerosol)! KHÔNG BẬT CÒI.{RESET}")
-                    print(f"  💾 {CYAN}[TIẾT KIỆM BỘ NHỚ]{RESET} Không có cháy thực tế -> Bỏ qua, không lưu ảnh vào thẻ nhớ.")
+                    print(f"  📸 [XÁC THỰC TRỰC QUAN] Đã cập nhật ảnh hiện trường 'latest_scan.jpg' lên Dashboard.")
             else:
                 # Nếu không bật camera (chạy sensor fallback)
                 final_alert = True
